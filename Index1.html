@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soft Glowing Flower</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+</style>
+</head>
+
+<body>
+<canvas id="flower"></canvas>
+
+<script>
+const canvas = document.getElementById("flower");
+const ctx = canvas.getContext("2d");
+
+let W, H, cx, cy, scale;
+let start = performance.now();
+let particles = [];
+
+function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    cx = W / 2;
+    cy = H / 2;
+
+    scale = Math.min(W, H) * 0.30;
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+// Smooth easing
+function ease(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+function clamp(v) {
+    return Math.max(0, Math.min(1, v));
+}
+
+// Draw natural curved petals
+function drawPetal(angle, length, width, progress,
+                   color, glow, fillAlpha) {
+    if (progress <= 0) return;
+
+    const grow = ease(progress);
+    const L = length * grow;
+    const B = width * grow;
+
+    ctx.save();
+    ctx.rotate(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+
+    ctx.bezierCurveTo(
+        -B * 0.65, -L * 0.25,
+        -B * 1.08, -L * 0.72,
+        0, -L
+    );
+
+    ctx.bezierCurveTo(
+        B * 1.08, -L * 0.72,
+        B * 0.65, -L * 0.25,
+        0, 0
+    );
+
+    ctx.closePath();
+
+    // Soft outline
+    ctx.globalAlpha = progress;
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = color;
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 1 + 7 * progress;
+    ctx.stroke();
+
+    // Subtle colored petal fill
+    if (fillAlpha > 0) {
+        const grad = ctx.createLinearGradient(
+            0, 0, 0, -L
+        );
+
+        grad.addColorStop(
+            0,
+            `rgba(255, 65, 190, ${fillAlpha})`
+        );
+        grad.addColorStop(
+            0.5,
+            `rgba(190, 35, 255, ${fillAlpha * 0.65})`
+        );
+        grad.addColorStop(
+            1,
+            `rgba(255, 100, 225, ${fillAlpha * 0.2})`
+        );
+
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.8;
+        ctx.shadowBlur = 0;
+        ctx.fill();
+
+        // Delicate inner highlight
+        ctx.globalAlpha = 0.25 * progress;
+        ctx.strokeStyle = "#ffb2f4";
+        ctx.lineWidth = 0.6;
+        ctx.shadowBlur = 3;
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// Floating particles
+function createParticles() {
+    particles = [];
+
+    for (let i = 0; i < 75; i++) {
+        particles.push({
+            angle: Math.random() * Math.PI * 2,
+            radius: 0.3 + Math.random() * 1.05,
+            speed: 0.08 + Math.random() * 0.2,
+            size: 0.5 + Math.random() * 1.5,
+            alpha: 0.15 + Math.random() * 0.4,
+            phase: Math.random() * Math.PI * 2
+        });
+    }
+}
+
+createParticles();
+
+function drawParticles(time, bloom) {
+    if (bloom < 0.15) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (const p of particles) {
+        const a = p.angle + time * p.speed * 0.001;
+        const r = p.radius * scale;
+
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r;
+
+        const twinkle = 0.5 + 0.5 *
+            Math.sin(time * 0.002 + p.phase);
+
+        ctx.beginPath();
+        ctx.arc(
+            x, y,
+            p.size * twinkle,
+            0, Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            `rgba(255, ${120 + Math.floor(twinkle * 60)}, 230, ${p.alpha * bloom * twinkle})`;
+
+        ctx.shadowColor = "#ff38d7";
+        ctx.shadowBlur = 4;
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+// Subtle radial light rays
+function drawRays(time, bloom) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(time * 0.00008);
+
+    const radius = scale * 1.5;
+    ctx.globalAlpha = bloom * 0.045;
+
+    for (let i = 0; i < 18; i++) {
+        ctx.save();
+        ctx.rotate(i * Math.PI / 9);
+
+        const grad = ctx.createLinearGradient(
+            0, 0, 0, -radius
+        );
+
+        grad.addColorStop(0, "#ff2fd0");
+        grad.addColorStop(1, "rgba(145, 0, 255, 0)");
+
+        ctx.beginPath();
+        ctx.moveTo(-2, -scale * 0.2);
+        ctx.lineTo(2, -scale * 0.2);
+        ctx.lineTo(0, -radius);
+        ctx.closePath();
+
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    ctx.restore();
+}
+
+// Golden flower center
+function drawCenter(time, bloom) {
+    const centerProgress = clamp((bloom - 0.62) / 0.28);
+
+    if (centerProgress <= 0) return;
+
+    const pulse = 1 + Math.sin(time * 0.003) * 0.035;
+    const radius = scale * 0.075 *
+        centerProgress * pulse;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = centerProgress;
+
+    // Soft golden light
+    const glow = ctx.createRadialGradient(
+        cx, cy, 0,
+        cx, cy, radius * 2.8
+    );
+
+    glow.addColorStop(0, "#fffbd0");
+    glow.addColorStop(0.25, "#ffd42e");
+    glow.addColorStop(0.65, "rgba(255, 155, 0, 0.25)");
+    glow.addColorStop(1, "rgba(255, 100, 0, 0)");
+
+    ctx.fillStyle = glow;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 2.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Small golden stamens
+    ctx.shadowColor = "#ffcf39";
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = "#ffe77a";
+
+    for (let i = 0; i < 20; i++) {
+        const a = i * Math.PI * 2 / 20;
+        const r = radius * (1.1 + 0.3 *
+            Math.sin(i * 5));
+
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r;
+
+        ctx.beginPath();
+        ctx.arc(x, y, 1.2 * centerProgress,
+                0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.58,
+            0, Math.PI * 2);
+
+    ctx.fillStyle = "#fff2a0";
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// Main animation
+function render(time) {
+    ctx.clearRect(0, 0, W, H);
+
+    const elapsed = (time - start) / 1000;
+
+    // Flower blooms over several seconds
+    const bloom = ease(clamp(elapsed / 7.5));
+
+    // Glow gradually increases after the petals unfold
+    const glowStart = clamp((elapsed - 4.2) / 3.3);
+    const glow = ease(glowStart);
+
+    // Gentle pulse after full bloom
+    const pulse = bloom > 0.98
+        ? 1 + Math.sin(time * 0.0022) * 0.025
+        : 1;
+
+    const outlineColor = glow > 0.4
+        ? "#ff6be9"
+        : "#a83a78";
+
+    const outerGlow = glow > 0.4
+        ? "#ff00d9"
+        : "#a90076";
+
+    drawRays(time, glow);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(
+        scale / 100 * pulse,
+        scale / 100 * pulse
+    );
+
+    ctx.globalCompositeOperation = "lighter";
+
+    // Outer layer: 10 large petals
+    for (let i = 0; i < 10; i++) {
+        const delay = i * 0.055;
+        const p = clamp((elapsed - delay) / 4.8);
+        const angle = i * Math.PI * 2 / 10;
+
+        drawPetal(
+            angle,
+            100,
+            33,
+            p * bloom,
+            outlineColor,
+            outerGlow,
+            0.08 * glow
+        );
+    }
+
+    // Middle layer: 8 petals
+    for (let i = 0; i < 8; i++) {
+        const delay = 0.6 + i * 0.07;
+        const p = clamp((elapsed - delay) / 4.3);
+        const angle =
+            i * Math.PI * 2 / 8 + Math.PI / 8;
+
+        drawPetal(
+            angle,
+            73,
+            27,
+            p * bloom,
+            "#ff83f2",
+            "#bd00ff",
+            0.12 * glow
+        );
+    }
+
+    // Inner layer: 6 small petals
+    for (let i = 0; i < 6; i++) {
+        const delay = 1.2 + i * 0.08;
+        const p = clamp((elapsed - delay) / 3.7);
+        const angle = i * Math.PI * 2 / 6;
+
+        drawPetal(
+            angle,
+            45,
+            17,
+            p * bloom,
+            "#ffc0f8",
+            "#ff36dc",
+            0.15 * glow
+        );
+    }
+
+    ctx.restore();
+
+    drawCenter(time, bloom);
+    drawParticles(time, bloom);
+
+    requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
